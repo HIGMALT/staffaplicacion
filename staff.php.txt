@@ -1,0 +1,139 @@
+<?php
+// public/api/send_webhook.php
+session_start();
+header('Content-Type: application/json');
+
+// só aceita POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'Method not allowed']);
+    exit;
+}
+
+// verifica o content type e pega json/body
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid JSON']);
+    exit;
+}
+
+// CSRF: pode vir no body "csrf" ou no header X-CSRF-Token
+$csrf = $input['csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null);
+if (empty($csrf) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'CSRF token inválido']);
+    exit;
+}
+
+// Rate limit simples por sessão: max 3 envios por hora
+if (!isset($_SESSION['submissions'])) {
+    $_SESSION['submissions'] = [];
+}
+// remove timestamps antigos (> 3600s)
+$_SESSION['submissions'] = array_filter($_SESSION['submissions'], function($ts) {
+    return ($ts > time() - 3600);
+});
+if (count($_SESSION['submissions']) >= 3) {
+    http_response_code(429);
+    echo json_encode(['error' => 'Limite de envios atingido (3 por hora). Tente mais tarde.']);
+    exit;
+}
+
+// pega e valida campos esperados (adapte conforme seu formulário)
+$serverName   = trim($input['serverName'] ?? '');
+$serverLink   = trim($input['serverLink'] ?? '');
+$applicant    = trim($input['applicantName'] ?? '');
+$age          = intval($input['age'] ?? 0);
+$role         = trim($input['role'] ?? '');
+$experience   = trim($input['experience'] ?? '');
+$reason       = trim($input['reason'] ?? '');
+$discordTag   = trim($input['discord'] ?? '');
+
+// valiações básicas
+$errors = [];
+if ($serverName === '' || mb_strlen($serverName) > 100) $errors[] = 'Nome do servidor inválido.';
+if ($serverLink === '' || mb_strlen($serverLink) > 200) $errors[] = 'Link/IP inválido.';
+if ($applicant === '' || mb_strlen($applicant) > 50) $errors[] = 'Nome/Nick inválido.';
+if ($age < 10 || $age > 100) $errors[] = 'Idade inválida.';
+$allowedRoles = ['helper','moderator','admin','builder','dev'];
+if (!in_array($role, $allowedRoles)) $errors[] = 'Cargo inválido.';
+if (mb_strlen($experience) > 1000) $errors[] = 'Experiência muito longa.';
+if (mb_strlen($reason) > 1000) $errors[] = 'Motivo muito longo.';
+if ($discordTag === '' || mb_strlen($discordTag) > 100) $errors[] = 'Discord inválido.';
+
+if (!empty($errors)) {
+    http_response_code(422);
+    echo json_encode(['error' => 'Validação falhou', 'details' => $errors]);
+    exit;
+}
+
+// carrega config (fora do web root)
+$configPath = __DIR__ . '/../../private/config.php';
+if (!file_exists($configPath)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Configuração do webhook não encontrada no servidor.']);
+    exit;
+}
+$config = require $configPath;
+$webhook = $config['discord_webhook'] ?? null;
+if (empty($webhook)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Webhook não configurado.']);
+    exit;
+}
+
+// prepara embed para Discord (limitar tamanho: 1024 por field normalmente)
+$embed = [
+    'title' => '📋 Nova Aplicação Recebida',
+    'color' => 3447003,
+    'fields' => [
+        ['name' => 'Servidor', 'value' => mb_substr($serverName,0,100), 'inline' => true],
+        ['name' => 'Link/IP', 'value' => mb_substr($serverLink,0,100), 'inline' => true],
+        ['name' => 'Nome/Nick', 'value' => mb_substr($applicant,0,50), 'inline' => true],
+        ['name' => 'Idade', 'value' => (string)$age, 'inline' => true],
+        ['name' => 'Cargo Desejado', 'value' => $role, 'inline' => true],
+        ['name' => 'Discord', 'value' => mb_substr($discordTag,0,100), 'inline' => true],
+        ['name' => 'Experiência', 'value' => mb_substr($experience ?: 'Nenhuma',0,1000), 'inline' => false],
+        ['name' => 'Motivo', 'value' => mb_substr($reason,0,1000), 'inline' => false],
+    ],
+    'footer' => ['text' => 'Formulário Staff • Enviado automaticamente'],
+    'timestamp' => date(DATE_ATOM)
+];
+
+$payload = json_encode([
+    'username' => 'Formulário Staff',
+    'avatar_url' => 'https://cdn-icons-png.flaticon.com/512/942/942751.png',
+    'embeds' => [$embed]
+]);
+
+// envia via cURL
+$ch = curl_init($webhook);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$curlErr = curl_error($ch);
+curl_close($ch);
+
+if ($curlErr) {
+    http_response_code(502);
+    echo json_encode(['error' => 'Erro ao conectar Discord', 'details' => $curlErr]);
+    exit;
+}
+
+if ($httpCode >= 200 && $httpCode < 300) {
+    // registra timestamp de envio na sessão para rate limit
+    $_SESSION['submissions'][] = time();
+    echo json_encode(['ok' => true, 'message' => 'Aplicação enviada com sucesso.']);
+    exit;
+} else {
+    http_response_code(500);
+    echo json_encode(['error' => 'Discord retornou código ' . $httpCode, 'response' => $response]);
+    exit;
+}
