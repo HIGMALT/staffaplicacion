@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Painel Staff</title>
+  <style>
+    body {
+      font-family: "Poppins", sans-serif;
+      background: linear-gradient(135deg, #1e1e2f, #29294a);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+      max-width: 500px;
+      width: 90%;
+      backdrop-filter: blur(10px);
+      display: none;
+      z-index: 2;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #00d9ff;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      outline: none;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-size: 14px;
+    }
+    textarea {
+      resize: none;
+      height: 100px;
+    }
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 12px;
+      background: #00d9ff;
+      border: none;
+      border-radius: 8px;
+      color: #1e1e2f;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover {
+      background: #00b6d6;
+    }
+    .small-note {
+      font-size: 12px;
+      color: #bbb;
+      text-align: center;
+      margin-top: 10px;
+    }
+    #login-container {
+      display: block;
+    }
+    .error {
+      color: #ff7b7b;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .success {
+      color: #8cff8c;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    /* --- ANIMAÇÃO DE CARREGAMENTO --- */
+    .loader-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(30, 30, 47, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      display: none;
+    }
+    .loader {
+      border: 5px solid rgba(255, 255, 255, 0.2);
+      border-top: 5px solid #00d9ff;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Tela de carregamento -->
+  <div class="loader-overlay" id="loader">
+    <div class="loader"></div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="login-container" class="container">
+    <h2>Login de Acesso</h2>
+    <label for="username">Usuário:</label>
+    <input type="text" id="username" placeholder="Digite o usuário">
+
+    <label for="password">Senha:</label>
+    <input type="password" id="password" placeholder="Digite a senha">
+
+    <button onclick="login()">Entrar</button>
+    <p id="error-msg" class="error"></p>
+  </div>
+
+  <!-- FORMULÁRIO STAFF -->
+  <div id="form-container" class="container">
+    <h2>Formulário de Aplicação - Staff</h2>
+    <form id="staffForm">
+      <label for="serverName">Nome do Servidor:</label>
+      <input type="text" id="serverName" name="serverName" placeholder="Ex: DarkRealmMC" required>
+
+      <label for="serverLink">Link do Servidor (IP ou Site):</label>
+      <input type="text" id="serverLink" name="serverLink" placeholder="Ex: play.darkrealm.com" required>
+
+      <label for="applicantName">Seu Nome ou Nickname:</label>
+      <input type="text" id="applicantName" name="applicantName" placeholder="Ex: zPlayerBR" required>
+
+      <label for="age">Idade:</label>
+      <input type="number" id="age" name="age" min="10" max="100" placeholder="Ex: 17" required>
+
+      <label for="role">Cargo Desejado:</label>
+      <select id="role" name="role" required>
+        <option value="">Selecione...</option>
+        <option value="helper">Ajudante (Helper)</option>
+        <option value="moderator">Moderador</option>
+        <option value="admin">Administrador</option>
+        <option value="builder">Builder (Construtor)</option>
+        <option value="dev">Desenvolvedor</option>
+      </select>
+
+      <label for="experience">Você já teve experiência em outros servidores?</label>
+      <textarea id="experience" name="experience" placeholder="Descreva sua experiência anterior..." required></textarea>
+
+      <label for="reason">Por que você está fazendo essa staff?</label>
+      <textarea id="reason" name="reason" placeholder="Explique o motivo pelo qual quer entrar na equipe..." required></textarea>
+
+      <label for="discord">Seu Discord:</label>
+      <input type="text" id="discord" name="discord" placeholder="Ex: zPlayer#1234" required>
+
+      <button type="submit">Enviar Aplicação</button>
+      <p id="status" class="small-note"></p>
+    </form>
+  </div>
+
+  <script>
+    const WEBHOOK_URL = "https://discord.com/api/webhooks/1436374287526396080/zCuwUHmIFU3BQ-2j37J7L-497ck9Z0hNQrbfDCfw0IUSacRCc3yPBaijvTB5FeXV7WK1";
+
+    function showLoader(show) {
+      document.getElementById("loader").style.display = show ? "flex" : "none";
+    }
+
+    function login() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const errorMsg = document.getElementById('error-msg');
+
+      if (username === "devstore" && password === "8892") {
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('form-container').style.display = 'block';
+      } else {
+        errorMsg.textContent = "Usuário ou senha incorretos!";
+      }
+    }
+
+    document.getElementById("staffForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const status = document.getElementById("status");
+      status.textContent = "Enviando...";
+      status.style.color = "#ccc";
+      showLoader(true);
+
+      const data = {
+        serverName: document.getElementById("serverName").value,
+        serverLink: document.getElementById("serverLink").value,
+        applicantName: document.getElementById("applicantName").value,
+        age: document.getElementById("age").value,
+        role: document.getElementById("role").value,
+        experience: document.getElementById("experience").value,
+        reason: document.getElementById("reason").value,
+        discord: document.getElementById("discord").value,
+      };
+
+      const payload = {
+        username: "Formulário Staff",
+        avatar_url: "https://cdn-icons-png.flaticon.com/512/942/942751.png",
+        embeds: [
+          {
+            title: "📋 Nova Aplicação Recebida",
+            color: 3447003,
+            fields: [
+              { name: "Servidor", value: data.serverName, inline: true },
+              { name: "Link/IP", value: data.serverLink, inline: true },
+              { name: "Nome/Nick", value: data.applicantName, inline: true },
+              { name: "Idade", value: data.age, inline: true },
+              { name: "Cargo Desejado", value: data.role, inline: true },
+              { name: "Experiência", value: data.experience || "Nenhuma", inline: false },
+              { name: "Motivo", value: data.reason, inline: false },
+              { name: "Discord", value: data.discord, inline: true }
+            ],
+            footer: { text: "Formulário Staff • Enviado automaticamente" },
+            timestamp: new Date()
+          }
+        ]
+      };
+
+      try {
+        const response = await fetch(WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        showLoader(false);
+
+        if (response.ok) {
+          status.textContent = "✅ Aplicação enviada com sucesso!";
+          status.style.color = "#8cff8c";
+          document.getElementById("staffForm").reset();
+        } else {
+          status.textContent = "❌ Erro ao enviar. Verifique o webhook.";
+          status.style.color = "#ff7b7b";
+        }
+      } catch (error) {
+        console.error(error);
+        showLoader(false);
+        status.textContent = "⚠️ Erro de conexão com o Discord.";
+        status.style.color = "#ff7b7b";
+      }
+    });
+  </script>
+
+</body>
+</html>
